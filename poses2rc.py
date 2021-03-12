@@ -1,11 +1,10 @@
+import os
+
+import numpy as np
 from lxml import etree as ET
 
-if __name__ == '__main__':
-    # Parameters
-    focal_length = 13.125  # 35mm focal length format
-    rotation_matrix = '0.7071068 0.7071068 0 -0.7071068 0.7071068 0 0 0 1'
-    position_vector = '-20.5807016265379 -6.3260289034089 21.4566620107225'
-    
+
+def pose2rc(focal_length, rotation_matrix, position_vector, filename):
     # xml generation
     X = '{%s}' % 'adobe:ns:meta'
     RDF = '{%s}' % 'http://www.w3.org/1999/02/22-rdf-syntax-ns#'
@@ -40,8 +39,31 @@ if __name__ == '__main__':
     position = ET.SubElement(desc, XCR + 'Position')
     position.text = position_vector
     
-    tree = ET.ElementTree(root)
-    with open('image_097.xmp', 'wb+') as f:
+    with open(filename, 'wb+') as f:
         f.write(ET.tostring(root, pretty_print=True))
-    print(ET.tostring(root, pretty_print=True))
+    
+
+
+if __name__ == '__main__':
+    # Parameters
+    focal_length = 13.125  # 35mm focal length format
+    camera_transform = np.array([[1, 0, 0],
+                                 [0, -1, 0],
+                                 [0, 0, -1]])  # Rotate 180 degrees along +x
+    for index, filename in enumerate(sorted(os.listdir('poses'))):
+        file_path = os.path.join('poses', filename)
+        transform_matrix = np.loadtxt(file_path)
+        rotation_matrix = transform_matrix[:3, :3]
+        rotation_matrix = rotation_matrix @ camera_transform
+        position_vector = transform_matrix[:3, -1]
+        rotation_matrix = rotation_matrix.ravel(order='F').tolist()  # Column-major
+        rotation_matrix = ' '.join(str(x) for x in rotation_matrix)
+        position_vector = ' '.join(str(x) for x in position_vector)
+        output_filename = os.path.join('output', f'image_{index:03d}.xmp')
+        pose2rc(focal_length, rotation_matrix, position_vector, output_filename)
+        
+    # rotation_matrix = '0.7071068 0.7071068 0 -0.7071068 0.7071068 0 0 0 1'
+    # position_vector = '-20.5807016265379 -6.3260289034089 21.4566620107225'
+    
+    # filename = 'image_097.xmp'
     
