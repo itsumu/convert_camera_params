@@ -41,7 +41,6 @@ def pose2rc(focal_length, rotation_matrix, position_vector, filename):
     
     with open(filename, 'wb+') as f:
         f.write(ET.tostring(root, pretty_print=True))
-    
 
 
 if __name__ == '__main__':
