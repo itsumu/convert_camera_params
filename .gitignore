@@ -1,6 +1,6 @@
 .history
 .vscode
-poses
-output
+poses/*
+output/*
 
 *.xmp
