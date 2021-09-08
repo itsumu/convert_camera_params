@@ -1,7 +1,18 @@
+import argparse
 import os
 
 import numpy as np
 from lxml import etree as ET
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    
+    parser.add_argument('--scene_name', type=str, default='sndd_part')
+
+    args = parser.parse_args()
+    
+    return args
 
 
 def pose2rc(focal_length, rotation_matrix, position_vector, filename):
@@ -44,21 +55,39 @@ def pose2rc(focal_length, rotation_matrix, position_vector, filename):
 
 
 if __name__ == '__main__':
+    args = parse_args()
+    
+    pose_dir = os.path.join('input', args.scene_name, 'poses')
+    hwfov_dir = os.path.join('input', args.scene_name, 'hwfovs')
+    output_dir = os.path.join('output', args.scene_name, 'rc')
+    os.makedirs(output_dir, exist_ok=True)
+    
     # Parameters
-    focal_length = 13.125  # 35mm focal length format
     camera_transform = np.array([[1, 0, 0],
                                  [0, -1, 0],
                                  [0, 0, -1]])  # Rotate 180 degrees along +x
-    for index, filename in enumerate(sorted(os.listdir('poses'))):
-        file_path = os.path.join('poses', filename)
-        transform_matrix = np.loadtxt(file_path)
+    pose_file_path_list = []
+    hwfov_file_path_list = []
+    for filename in sorted(os.listdir(pose_dir)):
+        pose_file_path_list.append(os.path.join(pose_dir, filename))
+    for filename in sorted(os.listdir(hwfov_dir)):
+        hwfov_file_path_list.append(os.path.join(hwfov_dir, filename))
+    assert len(hwfov_file_path_list) == len(pose_file_path_list),\
+            'hwfovs & poses not paired!' 
+        
+    for index in range(len(pose_file_path_list)):
+        pose_file_path = pose_file_path_list[index]
+        hwfov_file_path = hwfov_file_path_list[index]
+        transform_matrix = np.loadtxt(pose_file_path)
+        _, _, fov = np.loadtxt(hwfov_file_path)
+        focal_length = (0.5 * 35) * (1 / np.tan(np.radians(fov) / 2))  # 35mm focal length format
         rotation_matrix = transform_matrix[:3, :3]
         rotation_matrix = rotation_matrix @ camera_transform
         position_vector = transform_matrix[:3, -1]
         rotation_matrix = rotation_matrix.ravel(order='F').tolist()  # Column-major
         rotation_matrix = ' '.join(str(x) for x in rotation_matrix)
         position_vector = ' '.join(str(x) for x in position_vector)
-        output_filename = os.path.join('output', f'image_{index:03d}.xmp')
+        output_filename = os.path.join(output_dir, f'image_{index:03d}.xmp')
         pose2rc(focal_length, rotation_matrix, position_vector, output_filename)
         
     # rotation_matrix = '0.7071068 0.7071068 0 -0.7071068 0.7071068 0 0 0 1'
