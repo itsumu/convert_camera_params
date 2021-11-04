@@ -10,43 +10,62 @@ def parse_args():
     parser = argparse.ArgumentParser()
     
     parser.add_argument('--scene_name', type=str, default='sndd_part')
-
     args = parser.parse_args()
     
     return args
 
 
-def posefile2rc(pose_dir, hwfov_dir):
-    # Parameters
+def fov2focal(fov):
+    return (0.5 * 35) * (1 / np.tan(np.radians(fov) / 2))  # 35mm focal length format
+
+
+def hwfovfiles2focals(hwfov_dir):
+    focal_lengths = []
+    
+    for filename in sorted(os.listdir(hwfov_dir)):
+        _, _, fov = np.loadtxt(os.path.join(hwfov_dir, filename))
+        focal_length = fov2focal(fov)
+        focal_lengths.append(focal_length)
+    
+    return focal_lengths
+
+
+def hwfovfile2focals(hwfov_path, count):
+    _, _, fov = np.loadtxt(hwfov_path)
+    focal_length = fov2focal(fov)
+    focal_lengths = [focal_length] * count
+    
+    return focal_lengths
+
+
+def posefiles2poses(pose_dir):
     extra_transform = np.array([[1, 0, 0],
                                 [0, -1, 0],
                                 [0, 0, -1]])  # Rotate 180 degrees along +x
     pose_file_path_list = []
-    hwfov_file_path_list = []
+
     for filename in sorted(os.listdir(pose_dir)):
         pose_file_path_list.append(os.path.join(pose_dir, filename))
-    for filename in sorted(os.listdir(hwfov_dir)):
-        hwfov_file_path_list.append(os.path.join(hwfov_dir, filename))
-    assert len(hwfov_file_path_list) == len(pose_file_path_list),\
-            'hwfovs & poses not paired!' 
-        
+
+    rotation_mats = []
+    position_vecs = []        
     for index in range(len(pose_file_path_list)):
         pose_file_path = pose_file_path_list[index]
-        hwfov_file_path = hwfov_file_path_list[index]
         transform_matrix = np.loadtxt(pose_file_path)
-        _, _, fov = np.loadtxt(hwfov_file_path)
-        focal_length = (0.5 * 35) * (1 / np.tan(np.radians(fov) / 2))  # 35mm focal length format
+
         rotation_matrix = transform_matrix[:3, :3]
         rotation_matrix = rotation_matrix @ extra_transform
         position_vector = transform_matrix[:3, -1]
         rotation_matrix = rotation_matrix.ravel(order='F').tolist()  # Column-major
         rotation_matrix = ' '.join(str(x) for x in rotation_matrix)
         position_vector = ' '.join(str(x) for x in position_vector)
-        output_filename = os.path.join(output_dir, f'image_{index:03d}.xmp')
-        pose2rc(focal_length, rotation_matrix, position_vector, output_filename)
+        rotation_mats.append(rotation_matrix)
+        position_vecs.append(position_vector)
+    
+    return rotation_mats, position_vecs
 
 
-def flightlog2rc(flight_log_path, hwfov_dir):
+def logfile2poses(flight_log_path):
     # Load flight log
     extra_transform = np.array([[1, 0, 0],
                                 [0, -1, 0],
@@ -54,8 +73,8 @@ def flightlog2rc(flight_log_path, hwfov_dir):
     default_transform = Rotation.from_euler('x', 90, degrees=True).as_matrix()
     extra_transform = default_transform @ extra_transform
     
-    position_vecs = []
     rotation_mats = []
+    position_vecs = []
     with open(flight_log_path, 'r') as flight_log_file:
         line = flight_log_file.readline()
         while line != '':
@@ -74,21 +93,8 @@ def flightlog2rc(flight_log_path, hwfov_dir):
                 rotation_mats.append(None)
             position_vecs.append(' '.join(x for x in segments[1:4]))
             line = flight_log_file.readline()
-            
-    # Calculate focal lengths from fov files
-    focal_lengths = []
-    for filename in sorted(os.listdir(hwfov_dir)):
-        _, _, fov = np.loadtxt(os.path.join(hwfov_dir, filename))
-        focal_length = (0.5 * 35) * (1 / np.tan(np.radians(fov) / 2))  # 35mm focal length format
-        focal_lengths.append(focal_length)
-        
-    assert len(position_vecs) == len(focal_lengths), \
-            'hwfovs & flight log not paired!' 
-        
-    for index in range(len(focal_lengths)):
-        output_filename = os.path.join(output_dir, f'image_{index:03d}.xmp')
-        pose2rc(focal_lengths[index], rotation_mats[index], position_vecs[index],
-                output_filename)
+
+    return rotation_mats, position_vecs
 
 
 # +z forward, +x right, +y up
@@ -137,12 +143,14 @@ if __name__ == '__main__':
     
     input_dir = os.path.join('input', args.scene_name)
     pose_dir = os.path.join(input_dir, 'poses')
-    hwfov_dir = os.path.join(input_dir, 'hwfovs')
     output_dir = os.path.join('output', args.scene_name, 'rc')
     os.makedirs(output_dir, exist_ok=True)
     
+    # Load poses as string of flattened rotation matrices & position vectors
+    rotation_mats = []
+    position_vecs = []
     if os.path.exists(pose_dir): # Pose from pose file
-        posefile2rc(pose_dir, hwfov_dir)
+        rotation_mats, position_vecs = posefiles2poses(pose_dir)
     else: # Pose from flight log
         input_file_list = os.listdir(input_dir)
         flight_log_path = None
@@ -152,8 +160,27 @@ if __name__ == '__main__':
         if flight_log_path is None:
             print('No pose source exists!')
             exit(1)
-        flightlog2rc(flight_log_path, hwfov_dir)
+        rotation_mats, position_vecs = logfile2poses(flight_log_path)    
     
+    # Load focal lengths
+    focal_lengths = []
+    hwfov_path = os.path.join(input_dir, 'hwfov.txt')
+    if os.path.exists(hwfov_path):
+        focal_lengths = hwfovfile2focals(hwfov_path,
+                                         len(rotation_mats))
+    else:
+        hwfov_dir = os.path.join(input_dir, 'hwfovs')
+        focal_lengths = hwfovfiles2focals(hwfov_dir)
+    
+    # Save poses into rc xmp files
+    assert len(rotation_mats) == len(focal_lengths), \
+        'Pose & Focal lengths not paired.'
+        
+    for index in range(len(focal_lengths)):
+        output_filename = os.path.join(output_dir, f'image_{index:03d}.xmp')
+        pose2rc(focal_lengths[index], rotation_mats[index], position_vecs[index],
+                output_filename)
+        
     # rotation_matrix = '0.7071068 0.7071068 0 -0.7071068 0.7071068 0 0 0 1'
     # position_vector = '-20.5807016265379 -6.3260289034089 21.4566620107225'
     
