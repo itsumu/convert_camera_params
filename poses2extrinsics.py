@@ -40,5 +40,5 @@ if __name__ == '__main__':
         pose = np.loadtxt(os.path.join(pose_dir, filename))
         extrinsics = pose2extrinsics(pose)
         
-        np.savetxt(os.path.join(output_dir, f'extrinsics_{index:03d}.txt'),
+        np.savetxt(os.path.join(output_dir, f'extrinsics_{index:05d}.txt'),
                    extrinsics)

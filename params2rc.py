@@ -177,7 +177,7 @@ if __name__ == '__main__':
         'Pose & Focal lengths not paired.'
         
     for index in range(len(focal_lengths)):
-        output_filename = os.path.join(output_dir, f'image_{index:03d}.xmp')
+        output_filename = os.path.join(output_dir, f'image_{index:05d}.xmp')
         pose2rc(focal_lengths[index], rotation_mats[index], position_vecs[index],
                 output_filename)
         

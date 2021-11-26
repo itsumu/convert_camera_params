@@ -30,5 +30,5 @@ if __name__ == '__main__':
         intrinsics = np.array([[focal_length, 0, width / 2],
                                [0, focal_length, height / 2],
                                [0, 0, 1]])
-        np.savetxt(os.path.join(output_dir, f'intrinsics_{index:03d}.txt'),
+        np.savetxt(os.path.join(output_dir, f'intrinsics_{index:05d}.txt'),
                    intrinsics)
